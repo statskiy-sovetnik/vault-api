@@ -1,0 +1,26 @@
+{
+  "name": "vault-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statskiy-sovetnik/vault-api.git"
+  },
+  "author": "Ivan Gladkikh",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/statskiy-sovetnik/vault-api/issues"
+  },
+  "homepage": "https://github.com/statskiy-sovetnik/vault-api#readme",
+  "description": "",
+  "dependencies": {
+    "express": "^4.19.2",
+    "web3": "^4.9.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
