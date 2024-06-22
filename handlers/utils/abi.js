@@ -33,6 +33,11 @@ exports.abi = {
       type: 'function',
     },
     {
+      name: 'symbol',
+      outputs: [{ type: 'string' }],
+      type: 'function',
+    },
+    {
       name: 'approve',
       inputs: [{ type: 'address', name: 'spender' }, { type: 'uint256', name: "amount" }],
       type: 'function',

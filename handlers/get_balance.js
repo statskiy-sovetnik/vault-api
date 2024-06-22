@@ -2,22 +2,30 @@ const { Web3 } = require('web3');
 const { token_configuration } = require("./utils/token-configuration");
 const { arr_merge } = require("./utils/arr-merge");
 const { abi } = require("./utils/abi");
+const { chain_config } = require("./utils/chain-configuration")
 
-// TODO add chains support
-// TODO and validate that the chain is supported
-const rpc_url = 'https://arbitrum.llamarpc.com';
-const web3 = new Web3(rpc_url);
+let chain_id;
+let web3;
 
 exports.get_balance_handler = async function(req, res) {
-  const vault_address = req.query.vault;
-  const chain_id = await web3.eth.getChainId();
-  let vault;
-  let configuration_address;
-  let vault_configuration;
+  chain_id = req.query.chainId;
+  let rpc_url;
+
+  try {
+    rpc_url = chain_config[chain_id].rpc_url;
+    web3 = new Web3(rpc_url);
+  }
+  catch {
+    res.status(400).send("Chain configuration error");
+  }
 
   /* 
     Set up and verify the vault contracts
    */
+  let vault;
+  let configuration_address;
+  let vault_configuration;
+  const vault_address = req.query.vault;
   try {
     vault = new web3.eth.Contract(abi.ASPIS_POOL_ABI, vault_address);
     configuration_address = await vault.methods.configuration().call();
@@ -47,7 +55,6 @@ exports.get_balance_handler = async function(req, res) {
       supported_tokens
     );
     info = await formatTokenBalances(
-      chain_id,
       supported_tokens,
       balances,
     );
@@ -80,7 +87,6 @@ async function getVaultBalances(
 
 
 async function formatTokenBalances(
-  chain_id,
   supported_tokens, 
   balances,
 ) {
@@ -93,20 +99,30 @@ async function formatTokenBalances(
       return _token.tokenAddress === token_address;
     });
 
-    if (token !== undefined) {
-      const decimals = token.decimals;
-      const non_scaled = balance_scaled == 0 ? 0 : 
-        web3.utils.fromWei(balance_scaled, decimals);
+    let decimals;
+    let symbol;
 
-      info[token.baseToken] = {
-        scaled: balance_scaled.toString(),
-        non_scaled: non_scaled
-      }
+    /* 
+      Get symbol and decimals from config file or fetch manually
+     */
+    if (token !== undefined) {
+      decimals = token.decimals;
+      symbol = token.baseToken;
     }
     else {
-      // TODO get manually
+      const token_instance = new web3.eth.Contract(abi.ERC_20_ABI, token_address);
+      symbol = await token_instance.methods.symbol().call();
+      decimals = await token_instance.methods.decimals().call();
+      decimals = Number(decimals);
     }
     
+    const non_scaled = balance_scaled == 0 ? 0 : 
+      web3.utils.fromWei(balance_scaled, decimals);
+
+    info[symbol] = {
+      scaled: balance_scaled.toString(),
+      non_scaled: non_scaled
+    }
   }
 
   return info;
