@@ -13,51 +13,51 @@ exports.create_vault_schema = Joi.object({
 
   minDeposit: Joi.number() // USDC not scaled
     .integer()
-    .positive()
+    .min(0)
     .default(0),
 
   maxDeposit: Joi.number() // USDC not scaled
-    .positive()
+    .min(0)
     .integer()
     .greater(Joi.ref('minDeposit'))
     .default(MAX_UINT256),
 
   startTime: Joi.number()
-    .positive()
+    .min(0)
     .integer()
     .greater(1719298900)
     .required(),
 
   finishTime: Joi.number()
     .integer()
-    .positive()
+    .min(0)
     .greater(Joi.ref('startTime'))
     .required(),
 
   withdrawalWindow: Joi.number() // hours
     .integer()
-    .positive()
+    .min(0)
     .greater(1)
     .required(),
   
   freezePeriod: Joi.number() // hours
     .integer()
-    .positive()
+    .min(0)
     .greater(1)
     .required(),
 
   lockLimit: Joi.number()  // hours
     .integer()
-    .positive()
+    .min(0)
     .required(),
 
   spendingLimit: Joi.number()
     .integer()
-    .positive()
+    .min(0)
     .default(0),
   
   initialPrice: Joi.number() // USD, not scaled
-    .positive()
+    .min(0)
     .greater(0.1)
     .required()
     .custom(priceUnscaled => priceUnscaled * PRICE_MULTIPLIER),
@@ -69,25 +69,25 @@ exports.create_vault_schema = Joi.object({
     .required(),
 
   entranceFee: Joi.number()  // percent, not scaled
-    .positive()
+    .min(0)
     .max(100)
     .required()
     .custom(fee => fee * FEE_MULTIPLIER),
 
   fundManagementFee: Joi.number()  // percent, not scaled
-    .positive()
+    .min(0)
     .max(100)
     .required()
     .custom(fee => fee * FEE_MULTIPLIER),
 
   performanceFee: Joi.number()  // percent, not scaled
-    .positive()
+    .min(0)
     .max(100)
     .required()
     .custom(fee => fee * FEE_MULTIPLIER),
 
   rageQuitFee: Joi.number()  // percent, not scaled
-    .positive()
+    .min(0)
     .max(100)
     .required()
     .custom(fee => fee * FEE_MULTIPLIER),
