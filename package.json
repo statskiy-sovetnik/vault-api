@@ -17,6 +17,9 @@
   "homepage": "https://github.com/statskiy-sovetnik/vault-api#readme",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.602.0",
+    "@aws-sdk/client-secrets-manager": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.602.0",
     "express": "^4.19.2",
     "joi": "^17.13.3",
     "web3": "^4.9.0"

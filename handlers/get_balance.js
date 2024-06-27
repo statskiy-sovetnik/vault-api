@@ -4,6 +4,7 @@ const { arr_merge } = require("./utils/arr-merge");
 const { abi } = require("./utils/abi");
 const { chain_config } = require("./utils/chain-configuration")
 
+
 let chain_id;
 let web3;
 

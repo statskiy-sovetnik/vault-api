@@ -6,6 +6,7 @@ describe('POST /create_vault', () => {
     const response = await request(app)
       .post('/create_vault')
       .query({ chainId: '42161' })
+      .set('x-api-key', 'exampleapikey')
       .send({ 
         maxCap: "100",
         minDeposit: "1",
