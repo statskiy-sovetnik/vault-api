@@ -2,10 +2,33 @@ const Joi = require('joi');
 
 const MAX_UINT256 = (2n ** 256n - 1n).toString();
 const PRICE_MULTIPLIER = 10000;
-const FEE_MULTIPLIER = 100;
+const FEE_BASE = 10000;
+const PERCENT_BASE = 10n**18n;
+
+
+const fee_scaler = (fee) => {
+  return Math.floor(Number(fee) * FEE_BASE / 100)
+}
+
+const governance_percent_scaler = (percent) => {
+  return BigInt(percent) * PERCENT_BASE / 100n;
+}
 
 
 exports.create_vault_schema = Joi.object({
+  name: Joi.string()
+    .token()
+    .min(3)
+    .max(30)
+    .required(),
+
+  symbol: Joi.string()
+    .token()
+    .min(3)
+    .max(10)
+    .uppercase()
+    .required(),
+
   maxCap: Joi.number()  // fundraising target, USDC not scaled
     .min(1)
     .integer()
@@ -72,25 +95,25 @@ exports.create_vault_schema = Joi.object({
     .min(0)
     .max(100)
     .required()
-    .custom(fee => fee * FEE_MULTIPLIER),
+    .custom(fee_scaler),
 
   fundManagementFee: Joi.number()  // percent, not scaled
     .min(0)
     .max(100)
     .required()
-    .custom(fee => fee * FEE_MULTIPLIER),
+    .custom(fee_scaler),
 
   performanceFee: Joi.number()  // percent, not scaled
     .min(0)
     .max(100)
     .required()
-    .custom(fee => fee * FEE_MULTIPLIER),
+    .custom(fee_scaler),
 
   rageQuitFee: Joi.number()  // percent, not scaled
     .min(0)
     .max(100)
     .required()
-    .custom(fee => fee * FEE_MULTIPLIER),
+    .custom(fee_scaler),
 
   depositTokens: Joi.array() // array of strings
     .items(Joi.string().required())
@@ -103,4 +126,28 @@ exports.create_vault_schema = Joi.object({
   trustedProtocols: Joi.array()
     .items(Joi.string())
     .required(),
+
+  /* governance */
+  quorumPercent: Joi.number()  // percent, not scaled
+    .min(1)
+    .max(100)
+    .required()
+    .custom(governance_percent_scaler),
+
+  minApprovalPercent: Joi.number()  // percent, not scaled
+    .min(1)
+    .max(100)
+    .required()
+    .custom(governance_percent_scaler),
+
+  votingDuration: Joi.number()  // hours
+    .integer()
+    .min(1)
+    .required(),
+
+  minLpSharePercent: Joi.number()  // percent, not scaled
+    .min(0)
+    .max(100)
+    .required()
+    .custom(governance_percent_scaler),
 });

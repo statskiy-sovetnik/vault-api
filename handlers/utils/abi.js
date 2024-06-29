@@ -62,5 +62,37 @@ exports.abi = {
       outputs: [{ type: 'address[]' }],
       type: 'function',
     },
+  ],
+
+  ASPIS_POOL_FACTORY: [
+    {
+      name: "newERC20AspisPoolDAO",
+      inputs: [
+          {
+              "name": "_aspisPoolConfig",
+              "type": "tuple",
+              "components": [
+                  { "name": "poolConfig", "type": "uint256[16]" },
+                  { "name": "name", "type": "string" },
+                  { "name": "symbol", "type": "string" }
+              ]
+          },
+          {
+              "name": "_voteConfig",
+              "type": "uint64[4]"
+          },
+          {
+              "name": "_addressArrays",
+              "type": "address[][4]"
+          }
+      ],
+      outputs: [
+          { "name": "_pool", "type": "address" },
+          { "name": "_voting", "type": "address" },
+          { "name": "_token", "type": "address" },
+          { "name": "_configuration", "type": "address" }
+      ],
+      type: "function"
+    }
   ]
 }

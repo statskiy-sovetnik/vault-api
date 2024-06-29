@@ -2,9 +2,11 @@ const { Web3 } = require('web3');
 const { chain_config } = require("./utils/chain-configuration");
 const { create_vault_schema } = require('./schemas/create_vault_schema');
 const Joi = require('joi');
-const { DynamoDBClient } = require ("@aws-sdk/client-dynamodb");
+const { DynamoDBClient, PutItemCommand } = require ("@aws-sdk/client-dynamodb");
 const { PutCommand, DynamoDBDocumentClient } = require ("@aws-sdk/lib-dynamodb");
 const { getAwsSecret } = require('./utils/get-aws-secret');
+const { create_vault_config } = require("./config/create_vault_config")
+const { abi } = require("./utils/abi");
 
 
 let chain_id;
@@ -23,6 +25,7 @@ exports.create_vault_handler = async function(req, res) {
   }
   catch {
     res.status(400).send("Chain configuration error");
+    return;
   }
 
   /* 
@@ -40,42 +43,92 @@ exports.create_vault_handler = async function(req, res) {
   catch(err) {
     console.log(err);
     res.status(400).send(`Invalid request parameters`);
+    return;
   }
 
   /* 
     Create a vault manager account and save to Dynamo
    */
-  let acc;
+  let vault_manager;
   try {
     const api_key = req.get('x-api-key');
-    acc = web3.eth.accounts.create();
+    vault_manager = web3.eth.accounts.create();
 
     if (!api_key) {
       throw new Error("Bad api key");
     }
 
-    await saveAccount(api_key, acc.address, acc.private_key);
+    await saveAccount(api_key, vault_manager.address, vault_manager.privateKey);
+
+    console.log("Vault manager: ", vault_manager.address);
   }
   catch(err) {
     console.log(err);
     res.status(500).send(`Couldn't save an account: ${err.message}`);
+    return;
   }
 
   /* 
     Sponsor the new account
   */
   try {
-    await sponsorAccount(acc.address);
+    await sponsorAccount(vault_manager.address);
   }
   catch(err) {
     console.log(err);
     res.status(500).send(`Failed to sponsor the new account: ${err.message}`);
+    return;
   }
 
   /* 
-    Create vault
+    Initialize factory and Create vault
    */
+  let vault_data;
+  try {
+    const poolFactory = new web3.eth.Contract(
+      abi.ASPIS_POOL_FACTORY, 
+      create_vault_config[chain_id].aspisPoolFactory
+    );
+
+    // Add a vault manager to the wallet
+    web3.eth.accounts.wallet.add(vault_manager.privateKey);
   
+    const newDaoParams = convertToFactoryParams(params);
+
+    // Estimate gas
+    const gasAmount = await poolFactory.methods.newERC20AspisPoolDAO(
+      ...newDaoParams
+    ).estimateGas();
+    console.log("Gas for vault: ", gasAmount);
+
+    // Create vault
+    /* const tx = await poolFactory.methods.newERC20AspisPoolDAO(
+      ...newDaoParams
+    ).send({
+      from: vault_manager.address
+    }); */
+
+    //console.log("Vault return data: ", tx);
+    /* if (!web3.validator.isAddress(tx.data.pool)) {
+      throw new Error("Failed to fetch the vault address");
+    } */
+  }
+  catch(err) {
+    console.log(err);
+    res.status(500).send(`Failed to create a new vault: ${err.message}`);
+  }
+
+  /* 
+    Save the vault data to database
+   */
+  try {
+    await saveVault(vault_data.pool, vault_manager.address);
+  }
+  catch(err) {
+    console.log(err);
+    res.status(500).send(`Dynamo Error: ${err.message}`);
+    return;
+  }
 
   res.status(200).send(params);
 }
@@ -85,9 +138,9 @@ async function saveAccount(api_key, address, private_key) {
   const command = new PutCommand({
     TableName: "Accounts",
     Item: {
-      ApiKey: api_key,
-      Account: address,
-      PrivateKey: private_key
+      apiKey: api_key,
+      address: address,
+      privateKey: private_key
     },
   });
 
@@ -96,15 +149,88 @@ async function saveAccount(api_key, address, private_key) {
   return response;
 }
 
+async function saveVault(
+  vault_address,
+  vault_manager_address,
+) {
+  const currentDate = new Date();
+  const isoDate = currentDate.toISOString(); 
+  
+  const params = {
+    TableName: "Vaults",
+    Item: {
+      "chainId": { S: chain_id.toString() },
+      "vaultAddress": { S: vault_address },
+      "vaultManagerAddress": { S: vault_manager_address },
+      "createdAt": { S: isoDate }
+    }
+  };
+
+  await dbclient.send(new PutItemCommand(params));
+}
 
 async function sponsorAccount(address) {
   const gas_sponsor_pk = await getAwsSecret("GasSponsorPK", "GasSponsorPK");
-  const gas_sponsor = web3.eth.accounts.wallet.add(gas_sponsor_pk);
-  const sponsor_value_eth = web3.utils.toWei("0.0001", "ether"); 
+  const gas_sponsor_address = web3.eth.accounts.privateKeyToAddress(gas_sponsor_pk);
 
-  await web3.eth.sendTransaction({ // internally sign transaction using wallet
-    from: gas_sponsor[0].address,
+  web3.eth.accounts.wallet.add(gas_sponsor_pk);
+  console.log("Gas sponsor: ", gas_sponsor_address);
+
+  const sponsor_value_eth = web3.utils.toWei(
+    create_vault_config[chain_id].sponsorEthValue, 
+    "ether"
+  ); 
+
+  const tx = {
+    from: gas_sponsor_address,
     to: address,
-    value: sponsor_value_eth
- });
+    value: sponsor_value_eth,
+  };
+
+  const gas = await web3.eth.estimateGas(tx);
+  await web3.eth.sendTransaction({
+    ...tx,
+    gas: (gas + 5000n).toString()
+  });
+}
+
+function convertToFactoryParams(params) {
+  const aspisPoolConfig = [
+    [
+      params.maxCap.toString(),
+      params.minDeposit.toString(),
+      params.maxDeposit.toString(),
+      params.startTime.toString(),
+      params.finishTime.toString(),
+      params.withdrawalWindow.toString(),
+      params.freezePeriod.toString(),
+      params.lockLimit.toString(),
+      params.spendingLimit.toString(),
+      params.initialPrice.toString(),
+      params.canChangeManager ? "1" : "0",
+      params.canPerformDirectTransfer ? "1" : "0",
+      params.entranceFee.toString(),
+      params.fundManagementFee.toString(),
+      params.performanceFee.toString(),
+      params.rageQuitFee.toString()
+    ],
+    params.name.toString(),
+    params.symbol.toString()
+  ];
+
+  const voteConfig = [
+    params.quorumPercent.toString(),
+    params.minApprovalPercent.toString(),
+    params.votingDuration.toString(),
+    params.minLpSharePercent.toString()
+  ];
+
+  const addressArrays = [
+    [], // whitelisted users
+    params.trustedProtocols,
+    params.depositTokens,
+    params.tradingTokens,
+  ];
+
+  return [aspisPoolConfig, voteConfig, addressArrays];
 }
