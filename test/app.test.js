@@ -8,13 +8,13 @@ describe('POST /create_vault', () => {
       .query({ chainId: '42161' })
       .set('x-api-key', 'exampleapikey')
       .send({ 
-        name: "Algo_Trading_Test_Vault",
-        symbol: "LP_ALGT",
+        name: "Algo_Trading_Test_Vault_7",
+        symbol: "LP_ALGT7",
         maxCap: "100",
         minDeposit: "1",
         maxDeposit: "100",
-        startTime: "1719298950",
-        finishTime: "1719398900",
+        startTime: "1719598950",
+        finishTime: "1719698900",
         withdrawalWindow: "48",
         freezePeriod: "12",
         lockLimit: "2",

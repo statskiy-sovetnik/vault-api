@@ -1,4 +1,4 @@
-const { Web3 } = require('web3');
+const { Web3, validator } = require('web3');
 const { chain_config } = require("./utils/chain-configuration");
 const { create_vault_schema } = require('./schemas/create_vault_schema');
 const Joi = require('joi');
@@ -83,7 +83,7 @@ exports.create_vault_handler = async function(req, res) {
   /* 
     Initialize factory and Create vault
    */
-  let vault_data;
+  let vault;
   try {
     const poolFactory = new web3.eth.Contract(
       abi.ASPIS_POOL_FACTORY, 
@@ -95,34 +95,28 @@ exports.create_vault_handler = async function(req, res) {
   
     const newDaoParams = convertToFactoryParams(params);
 
-    // Estimate gas
-    const gasAmount = await poolFactory.methods.newERC20AspisPoolDAO(
-      ...newDaoParams
-    ).estimateGas();
-    console.log("Gas for vault: ", gasAmount);
-
     // Create vault
-    /* const tx = await poolFactory.methods.newERC20AspisPoolDAO(
-      ...newDaoParams
-    ).send({
-      from: vault_manager.address
-    }); */
+    const tx = await deployVault(poolFactory, vault_manager.address, newDaoParams);
+    
+    // Decode logs
+    vault = decodePoolFromLogs(tx, poolFactory.options.address);
+    console.log("New vault: ", vault);
 
-    //console.log("Vault return data: ", tx);
-    /* if (!web3.validator.isAddress(tx.data.pool)) {
-      throw new Error("Failed to fetch the vault address");
-    } */
+    if (!vault) {
+      throw new Error("Failed to decode the vault address");
+    }
   }
   catch(err) {
     console.log(err);
     res.status(500).send(`Failed to create a new vault: ${err.message}`);
+    return;
   }
 
   /* 
     Save the vault data to database
    */
   try {
-    await saveVault(vault_data.pool, vault_manager.address);
+    await saveVault(vault, vault_manager.address);
   }
   catch(err) {
     console.log(err);
@@ -130,7 +124,10 @@ exports.create_vault_handler = async function(req, res) {
     return;
   }
 
-  res.status(200).send(params);
+  res.status(200).send({
+    vault: vault,
+    vault_manager: vault_manager.address
+  });
 }
 
 
@@ -208,11 +205,11 @@ function convertToFactoryParams(params) {
       params.spendingLimit.toString(),
       params.initialPrice.toString(),
       params.canChangeManager ? "1" : "0",
-      params.canPerformDirectTransfer ? "1" : "0",
       params.entranceFee.toString(),
       params.fundManagementFee.toString(),
       params.performanceFee.toString(),
-      params.rageQuitFee.toString()
+      params.rageQuitFee.toString(),
+      params.canPerformDirectTransfer ? "1" : "0",
     ],
     params.name.toString(),
     params.symbol.toString()
@@ -233,4 +230,52 @@ function convertToFactoryParams(params) {
   ];
 
   return [aspisPoolConfig, voteConfig, addressArrays];
+}
+
+async function deployVault(
+  poolFactory,
+  vault_manager_address,
+  params
+) {
+  // Estimate gas
+  const gasAmount = await poolFactory.methods.newERC20AspisPoolDAO(
+    ...params
+  ).estimateGas();
+
+  const gasForTx = (gasAmount + 100000n).toString();
+  const gasPrice = await web3.eth.getGasPrice();
+  const gasPriceForTx = (gasPrice * 110n / 100n).toString();
+  console.log("Gas for vault creation: ", gasForTx);
+
+  /* const data = poolFactory.methods.newERC20AspisPoolDAO(
+    ...newDaoParams
+  ).encodeABI();
+  console.log("Calldata: ", data); */
+  const tx = await poolFactory.methods.newERC20AspisPoolDAO(
+    ...params
+  ).send({
+    from: vault_manager_address,
+    gas: gasForTx,
+    gasPrice: gasPriceForTx
+  });
+  return tx;
+}
+
+function decodePoolFromLogs(tx, pool_factory_address) {
+  // The only log of the Aspis Pool Factory is "DAOCreated"
+  //console.log(tx.logs);
+  const DaoCreatedLog = tx.logs.find(log => {
+    return web3.utils.toChecksumAddress(log.address) === 
+      web3.utils.toChecksumAddress(pool_factory_address);
+  });
+
+  const params = web3.eth.abi.decodeParameters([
+    "address", // pool
+    "string",  // name
+    "address", // token 
+    "address",  // voting
+    "address" // configuration
+  ], DaoCreatedLog.data);
+
+  return params[0];
 }
